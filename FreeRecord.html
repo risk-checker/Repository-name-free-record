@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>FreeRecord</title>
+<style>
+body { font-family: sans-serif; padding:20px; }
+.axis { margin-bottom:12px; }
+button { margin-right:6px; }
+textarea { width:100%; height:120px; margin-top:10px; }
+@media (max-width: 600px) {
+
+  body {
+    padding: 10px;
+  }
+
+  .axis {
+    margin-bottom: 20px;
+  }
+
+  select {
+    width: 100%;
+    font-size: 16px;
+    margin-bottom: 6px;
+  }
+
+  button {
+    width: 32%;
+    font-size: 16px;
+    padding: 10px;
+  }
+
+  textarea {
+    height: 150px;
+    font-size: 14px;
+  }
+
+}
+</style>
+</head>
+<body>
+
+<h2>簡易記録（無料版）</h2>
+
+<!-- 利用者 -->
+<input id="user" placeholder="利用者名" style="width:100%;margin-bottom:12px;" oninput="generate()">
+
+<!-- 軸 -->
+<div id="axes"></div>
+
+<!-- 基準表示 -->
+<div id="baselineView" style="background:#f5f5f5;padding:10px;margin-top:10px;"></div>
+
+<!-- 出力（差分） -->
+<textarea id="output"></textarea>
+
+<button onclick="copyText()">コピー</button>
+<p id="copyStatus" style="color:green;font-weight:bold;"></p>
+<p id="timer" style="font-weight:bold;color:#333;"></p>
+
+<script>
+const axisList = ["呼吸","循環","皮膚","活動","代謝","行動"];
+
+const tagMap = {
+  "呼吸": ["息切れ", "呼吸苦", "咳"],
+  "循環": ["むくみ", "冷感", "皮膚色"],
+  "皮膚": ["赤み", "傷", "乾燥"],
+  "活動": ["動き", "外出", "閉じこもり"],
+  "代謝": ["食事", "水分", "排泄"],
+  "行動": ["不安", "睡眠", "落ち着き"]
+};
+
+const states = ["あり","なし"];
+
+let stateMap = {};
+let tagStateMap = {};
+let baseStateMap = {};
+let baseTagStateMap = {};
+let startTime = 0;
+
+function init(){
+  const container = document.getElementById("axes");
+
+  axisList.forEach(axis => {
+    stateMap[axis] = "";
+    tagStateMap[axis] = "";
+    baseStateMap[axis] = "";
+    baseTagStateMap[axis] = "";
+
+    const div = document.createElement("div");
+    div.className = "axis";
+
+    const label = document.createElement("div");
+    label.innerText = axis;
+    div.appendChild(label);
+
+    const tagSelect = document.createElement("select");
+    tagSelect.style.marginRight = "8px";
+    tagSelect.innerHTML =
+      '<option value="">タグを選択</option>' +
+      tagMap[axis].map(tag => '<option value="' + tag + '">' + tag + '</option>').join("");
+
+    tagSelect.onchange = () => {
+      tagStateMap[axis] = tagSelect.value;
+      generate();
+    };
+
+    div.appendChild(tagSelect);
+
+    states.forEach(s => {
+      const btn = document.createElement("button");
+      btn.innerText = s;
+
+      btn.onclick = () => {
+        stateMap[axis] = s;
+
+        Array.from(div.querySelectorAll("button")).forEach(b => {
+          b.style.background = "";
+        });
+
+        btn.style.background = "#4CAF50";
+        generate();
+      };
+
+      div.appendChild(btn);
+    });
+
+    container.appendChild(div);
+  });
+
+  loadLocal();
+  startTime = Date.now();
+}
+
+function axisText(axis, tags, states){
+  const tag = tags[axis] ? "（" + tags[axis] + "）" : "";
+  return axis + tag + "：" + states[axis];
+}
+
+function isChanged(axis){
+  const currentKey = (tagStateMap[axis] || "") + "：" + (stateMap[axis] || "");
+  const baseKey = (baseTagStateMap[axis] || "") + "：" + (baseStateMap[axis] || "");
+  return stateMap[axis] && currentKey !== baseKey;
+}
+
+function generate(){
+  const user = document.getElementById("user").value || "";
+
+  document.getElementById("baselineView").innerText = "";
+
+  let text = user + "\n今回の変更\n";
+  let hasDiff = false;
+
+  axisList.forEach(axis => {
+    if(isChanged(axis)){
+      text += axisText(axis, tagStateMap, stateMap) + "\n";
+      hasDiff = true;
+    }
+  });
+
+  if(!hasDiff){
+    text += "変更なし\n";
+  }
+
+  document.getElementById("output").value = text;
+  saveLocal();
+}
+
+function generateFullRecord(){
+  const user = document.getElementById("user").value || "";
+  let text = user + "\n\n";
+
+  text += "【状態】\n";
+  axisList.forEach(axis => {
+    if(stateMap[axis]){
+      text += axisText(axis, tagStateMap, stateMap) + "\n";
+    }
+  });
+
+  text += "\n【変化】\n";
+  let hasDiff = false;
+
+  axisList.forEach(axis => {
+    if(isChanged(axis)){
+      const before = baseStateMap[axis]
+        ? axisText(axis, baseTagStateMap, baseStateMap)
+        : axis + "：未入力";
+
+      const after = axisText(axis, tagStateMap, stateMap);
+
+      text += before + " → " + after + "\n";
+      hasDiff = true;
+    }
+  });
+
+  if(!hasDiff){
+    text += "変更なし\n";
+  }
+
+  return text;
+}
+
+function copyText(){
+  const fullText = generateFullRecord();
+
+  const endTime = Date.now();
+  const seconds = Math.round((endTime - startTime) / 1000);
+
+  const timerEl = document.getElementById("timer");
+  if(timerEl){
+    timerEl.innerText = "入力時間：" + seconds + "秒";
+  }
+
+  navigator.clipboard.writeText(fullText);
+
+  const status = document.getElementById("copyStatus");
+  status.innerText = "コピーしました";
+
+  setTimeout(() => {
+    status.innerText = "";
+  }, 2000);
+
+  baseStateMap = JSON.parse(JSON.stringify(stateMap));
+  baseTagStateMap = JSON.parse(JSON.stringify(tagStateMap));
+
+  localStorage.setItem("free_record_base_state", JSON.stringify(baseStateMap));
+  localStorage.setItem("free_record_base_tags", JSON.stringify(baseTagStateMap));
+
+  startTime = Date.now();
+}
+
+function saveLocal(){
+  localStorage.setItem("free_record_current_state", JSON.stringify(stateMap));
+  localStorage.setItem("free_record_current_tags", JSON.stringify(tagStateMap));
+  localStorage.setItem("free_record_user", document.getElementById("user").value);
+}
+
+function loadLocal(){
+  const user = localStorage.getItem("free_record_user");
+  const currentState = localStorage.getItem("free_record_current_state");
+  const currentTags = localStorage.getItem("free_record_current_tags");
+  const baseState = localStorage.getItem("free_record_base_state");
+  const baseTags = localStorage.getItem("free_record_base_tags");
+
+  if(user){
+    document.getElementById("user").value = user;
+  }
+
+  if(currentState){
+    stateMap = JSON.parse(currentState);
+  }
+
+  if(currentTags){
+    tagStateMap = JSON.parse(currentTags);
+  }
+
+  if(baseState){
+    baseStateMap = JSON.parse(baseState);
+  }
+
+  if(baseTags){
+    baseTagStateMap = JSON.parse(baseTags);
+  }
+
+  restoreButtonStyles();
+  restoreTagSelects();
+  generate();
+}
+
+function restoreButtonStyles(){
+  const axisBlocks = Array.from(document.querySelectorAll(".axis"));
+
+  axisBlocks.forEach((div, index) => {
+    const axis = axisList[index];
+    const selectedState = stateMap[axis];
+
+    Array.from(div.querySelectorAll("button")).forEach(btn => {
+      btn.style.background = "";
+
+      if(btn.innerText === selectedState){
+        btn.style.background = "#4CAF50";
+      }
+    });
+  });
+}
+
+function restoreTagSelects(){
+  const axisBlocks = Array.from(document.querySelectorAll(".axis"));
+
+  axisBlocks.forEach((div, index) => {
+    const axis = axisList[index];
+    const select = div.querySelector("select");
+
+    if(select){
+      select.value = tagStateMap[axis] || "";
+    }
+  });
+}
+
+init();
+</script>
+
+</body>
+</html>
