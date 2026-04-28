@@ -66,11 +66,19 @@ const tagMap = {
   "循環": ["むくみ", "冷感", "皮膚色"],
   "皮膚": ["赤み", "傷", "乾燥"],
   "活動": ["動き", "外出", "閉じこもり"],
-  "代謝": ["食事", "水分", "排泄"],
+  "代謝": ["食事量", "水分", "排泄"],
   "行動": ["不安", "睡眠", "落ち着き"]
 };
 
-const states = ["あり","なし"];
+
+const stateOptions = {
+  "呼吸": ["変化なし","気になる変化","明らかな変化"],
+  "循環": ["変化なし","気になる変化","明らかな変化"],
+  "皮膚": ["変化なし","気になる変化","明らかな変化"],
+  "活動": ["変化なし","気になる変化","明らかな変化"],
+  "代謝": ["変化なし","気になる変化","明らかな変化"],
+  "行動": ["変化なし","気になる変化","明らかな変化"]
+};
 
 let stateMap = {};
 let tagStateMap = {};
@@ -107,7 +115,7 @@ function init(){
 
     div.appendChild(tagSelect);
 
-    states.forEach(s => {
+    stateOptions[axis].forEach(s => {
       const btn = document.createElement("button");
       btn.innerText = s;
 
@@ -262,9 +270,39 @@ function loadLocal(){
     baseTagStateMap = JSON.parse(baseTags);
   }
 
+  // 旧タグ名の移行：食事 → 食事量
+  if(tagStateMap["代謝"] === "食事"){
+    tagStateMap["代謝"] = "食事量";
+  }
+  if(baseTagStateMap["代謝"] === "食事"){
+    baseTagStateMap["代謝"] = "食事量";
+  }
+
+  // 旧状態名の移行：軸固有表現 → 汎用3段階
+  axisList.forEach(axis => {
+    stateMap[axis] = normalizeStateLabel(stateMap[axis]);
+    baseStateMap[axis] = normalizeStateLabel(baseStateMap[axis]);
+  });
+
   restoreButtonStyles();
   restoreTagSelects();
   generate();
+}
+
+function normalizeStateLabel(value){
+  if(!value) return "";
+  if(value === "変化なし") return "変化なし";
+
+  if(
+    value.includes("軽") ||
+    value.includes("やや") ||
+    value.includes("低下") ||
+    value.includes("気になる")
+  ){
+    return "気になる変化";
+  }
+
+  return "明らかな変化";
 }
 
 function restoreButtonStyles(){
